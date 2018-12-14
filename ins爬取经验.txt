@@ -1,0 +1,56 @@
+	首先，instagram网页源码经经过js运算掩盖，直接调用requests.get无法获取到视频连接地址，只能用selenium了。
+通过webdriver直接访问你要爬取的博主的地址比如：https://www.instagram.com/关注者id/
+或者手工打开一下就可以看到直接url。
+browser = webdriver.Firefox(executable_path="/home/wj/Downloads/gecko/geckodriver")
+
+browser.get("https://www.instagram.com/kayf_tv/")
+
+sleep(3)
+当然你还得配一个Firefox的geckodriver，这个去网上找找，去git下载一个对应自己电脑的就行。sleep 3秒，等待网页加载完成，
+时间得看你网速快慢了，当然了，你要爬外网的东西肯定要科学上网才行啊，记得选全局代理，这样代码才能通过代理去到该去的
+地方。
+url = browser.find_elements_by_xpath('/html/body/span/section/main/div/div[3]/article/div[1]/div/div[1]/div[1]/a')
+这个东西是通过Firefox找到的，F12调出开发者模式，然后选择第一个视频，找到 href="/p/BrX01dcIH1f/" 这个链接就是视频的
+链接，但是直接通过get去爬，啥也找不到，用browser.page_source也是找不到的，没办法，办法总是人想出来的，选中这个链接
+，然后右键，cope->xpath，好了，我们找到了他的xpath,然后用browser.find_elements_by_xpath(path)来找他，OK，找到了，
+print(i.get_attribute('href'))
+因为他是href，所以用get_attribute('href')去获取，这样基本就成功一半了。我们已经找到了js加载后的视频地址，接下来当然
+就是爬取了啊。因为是直接视频播放地址，不用cookies都行，直接带个header去get就好了。然后在爬下来的源码里找到视频地址就
+很简单了，再就可以直接下载带本地了。
+其中实施过程中遇到的坑：
+1.cookies，之前是爬取的首页的数据，得带cookies才行，不然就直接到登陆界面去了，没关系，我们就登陆试试
+def cookie():
+    print('start')
+    loginUrl = 'https://www.instagram.com/accounts/login/?source=auth_switcher'
+    s = req.session()
+    postdata = { 'username': '你的账号', 'password': '密码', 'queryParams': '{"source": "auth_switcher"}'}
+    #print(postdata)
+    s = s.post(url=loginUrl, data=postdata, headers=headers)
+    #print(postdata)
+    c = req.cookies.RequestsCookieJar()  # 利用RequestsCookieJar获取
+    c.set('cookie-name', 'cookie-value')
+    s.cookies.update(c)
+    print(s.cookies.get_dict())
+    return s.cookies.get_dict()
+结果获取cookies成功了，却不能访问，后来看了下网页cookies
+cookies = cookie()
+cookies['shbts'] = str(time.time())
+cookies['shbid'] = '**********'
+cookies['ds_user_id'] = '*************'
+cookies['sessionid'] = '****************%3AMbdlmwg37gYAVb%3A28'
+cookies['urlgen'] = '{\"*********************\": 20473}:1gX6Kn:31_4pQKGPdcqQoCYjCJjejFe03Q}'
+还得带上自己信息才行，这些在浏览器都可以直接看到，加上就OK了，然后就可以去爬取首页数据了。但是这个一次只能爬5个左右，
+还必须是你的关注更新了你才能收到，还不能下拉网页（ins没有翻页，通过下拉加载更多，坑）。效率慢，弃。
+2.本地下载速度的限制，当你爬取到视频url后你可以调用os判断一下视频是不是已经下载过了，然后再下载，但是这个os的判断模块
+慢的出奇，还要就是不开多线程或者多进程的话，你得等下载完成后才能爬取新数据，慢，太慢了。想了一下，不想写多线程，没办法
+，开了多线程日志乱的出奇，不美，做一个读写分离吧。爬的写一个程序，下载的写一个程序，爬完地址就存入数据库就行，给个状态位
+，提醒下载的哥们该干活了，下载的程序只需要去数据库读取那些没有下载的地址，默默下载就行，下完再改一下状态位就OK。这样的
+话在本地的效率可以提高很多，毕竟不用等下载了。如果你是在服务器上爬，就没必要做读写分离了，服务器上下载的速度太快啦。
+3.	find_elements和find_element是不一样的，前者是一个[]，后者才是一个对象。还有就是怎么解决ins这种下拉加载下页的
+browser.execute_script("window.scrollTo(0,document.body.scrollHeight)")
+模拟下拉到底，得注意什么时候用，你的爬完这页才能下拉啊，不然之前的数据可能就被顶没了。再就是ins的xpath
+/html/body/span/section/main/div/div[3]/article/div[1]/div/div[i]/div[j]/a
+i,j都会变化，j是1到3，满3进1给i。再爬取到第二页的时候，i到16后就不会往后了，可以重置i来解决，我是重置的9，但是运行日志来
+看的话，基本是12开始有新数据，应该是12到15，再下拉再更新这种模式。
+好了，就是这样了，就可以爬取instagram你关注的视频了，图片没考虑，感兴趣的可以自己试试。下面贴源码：
+
